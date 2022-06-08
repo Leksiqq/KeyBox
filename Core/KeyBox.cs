@@ -6,13 +6,13 @@ namespace Net.Leksi.KeyBox;
 
 internal class KeyBox : IKeyBox, IKeyBoxConfiguration
 {
-    private readonly Dictionary<Type, Dictionary<string, KeyDefinition>> _keyMap = new();
+    private readonly Dictionary<Type, Dictionary<string, KeyDefinition>> _primaryKeysMap = new();
     private readonly Dictionary<Type, Type> _exampleKeyMap = new();
     private readonly ConditionalWeakTable<object, KeyRing> _attachedKeys = new();
     private readonly ConcurrentDictionary<Type, Type?> _mappedTypesCache = new();
     private bool _isConfigured = false;
 
-    public bool HasMappedPrimaryKeys => _keyMap.Count > 0;
+    public bool HasMappedPrimaryKeys => _primaryKeysMap.Count > 0;
 
     private KeyBox() { }
 
@@ -43,11 +43,11 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
         ThrowIfConfigured();
         ThrowIfNotClass(nameof(targetType), targetType);
         ThrowIfAlreadyMapped(targetType);
-        _keyMap[targetType] = new Dictionary<string, KeyDefinition>();
+        _primaryKeysMap[targetType] = new Dictionary<string, KeyDefinition>();
         int pos = 0;
         foreach (string name in definition.Keys.OrderBy(v => v))
         {
-            _keyMap[targetType][name] = new KeyDefinition { Index = pos, Type = definition[name] };
+            _primaryKeysMap[targetType][name] = new KeyDefinition { Index = pos, Type = definition[name] };
             ++pos;
         }
         return this;
@@ -63,6 +63,16 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
         return this;
     }
 
+    IKeyBoxConfiguration IKeyBoxConfiguration.AddForeignKey(Type targetType, IDictionary<string, Type> definition)
+    {
+        throw new NotImplementedException();
+    }
+
+    IKeyBoxConfiguration IKeyBoxConfiguration.AddForeignKey(Type targetType, Type exampleType)
+    {
+        throw new NotImplementedException();
+    }
+
     internal void CreateKeyRing(object source)
     {
         KeyRing? keyRing = null;
@@ -71,8 +81,8 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
             Type? mapped = GetMappedType(source.GetType());
             if (mapped is { })
             {
-                keyRing = new KeyRing(_keyMap[mapped]);
-                keyRing.PrimaryKey = new object[_keyMap[mapped].Count];
+                keyRing = new KeyRing(_primaryKeysMap[mapped]);
+                keyRing.PrimaryKey = new object[_primaryKeysMap[mapped].Count];
                 keyRing.Source = source;
                 _attachedKeys.Add(source, keyRing);
             }
@@ -85,7 +95,7 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
         if (!_mappedTypesCache.TryGetValue(actualType, out mapped))
         {
             Type? current = actualType;
-            while (current is { } && !_keyMap.ContainsKey(current))
+            while (current is { } && !_primaryKeysMap.ContainsKey(current))
             {
                 current = current!.BaseType;
             }
@@ -103,7 +113,7 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
 
     private void ThrowIfAlreadyMapped(Type targetType)
     {
-        if (_keyMap.ContainsKey(targetType) || _exampleKeyMap.ContainsKey(targetType))
+        if (_primaryKeysMap.ContainsKey(targetType) || _exampleKeyMap.ContainsKey(targetType))
         {
             throw new InvalidOperationException($"Key for {targetType} is already mapped");
         }
@@ -137,7 +147,7 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
                 {
                     stack.Push(_exampleKeyMap.Keys.First());
                 }
-                if (!_keyMap.ContainsKey(stack.Peek()) && !_exampleKeyMap.ContainsKey(stack.Peek()))
+                if (!_primaryKeysMap.ContainsKey(stack.Peek()) && !_exampleKeyMap.ContainsKey(stack.Peek()))
                 {
                     while (stack.Count > 0)
                     {
@@ -145,13 +155,13 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
                         notMapped.Add(stack.Pop());
                     }
                 }
-                else if (_keyMap.ContainsKey(stack.Peek()))
+                else if (_primaryKeysMap.ContainsKey(stack.Peek()))
                 {
-                    Dictionary<string, KeyDefinition> example = _keyMap[stack.Peek()];
+                    Dictionary<string, KeyDefinition> example = _primaryKeysMap[stack.Peek()];
                     while (stack.Count > 0)
                     {
                         _exampleKeyMap.Remove(stack.Peek());
-                        _keyMap[stack.Pop()] = example;
+                        _primaryKeysMap[stack.Pop()] = example;
                     }
                 }
                 else
@@ -181,5 +191,4 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
             }
         }
     }
-
 }
