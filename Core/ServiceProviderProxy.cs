@@ -17,9 +17,9 @@ public class ServiceProviderProxy : IServiceProvider
         {
             result = new ServiceScopeFactoryProxy(serviceScopeFactory);
         } 
-        else if (result is { } && result is not IKeyBox && result is not IKeyRing)
+        else if (result is { } && result is not IKeyBox)
         {
-            _keyBox.CreateKeyRing(result);
+            _keyBox.CreateKeyRing(this, result);
         }
         return result;
     }

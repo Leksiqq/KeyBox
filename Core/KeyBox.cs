@@ -1,5 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using System.Collections.Concurrent;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 
 namespace Net.Leksi.KeyBox;
@@ -7,9 +9,7 @@ namespace Net.Leksi.KeyBox;
 internal class KeyBox : IKeyBox, IKeyBoxConfiguration
 {
     private readonly Dictionary<Type, Dictionary<string, KeyDefinition>> _primaryKeysMap = new();
-    private readonly Dictionary<Type, Type> _exampleKeyMap = new();
     private readonly ConditionalWeakTable<object, KeyRing> _attachedKeys = new();
-    private readonly ConcurrentDictionary<Type, Type?> _mappedTypesCache = new();
     private bool _isConfigured = false;
 
     public bool HasMappedPrimaryKeys => _primaryKeysMap.Count > 0;
@@ -20,8 +20,17 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
     {
         KeyBox instance = new();
         configure?.Invoke(instance);
-        instance.Commit();
+        instance.Commit(services);
         services.AddSingleton<IKeyBox>(instance);
+
+    }
+
+    internal static void AddKeyBox(IHostBuilder builder, Action<IKeyBoxConfiguration> configure)
+    {
+        builder.UseServiceProviderFactory(new ServiceProviderFactory()).ConfigureServices((context, services) =>
+        {
+            AddKeyBox(services, configure);
+        });
     }
 
     IKeyRing? IKeyBox.GetKeyRing(object? source)
@@ -38,72 +47,116 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
         return null;
     }
 
-    IKeyBoxConfiguration IKeyBoxConfiguration.AddPrimaryKey(Type targetType, IDictionary<string, Type> definition)
+    IKeyBoxConfiguration IKeyBoxConfiguration.AddPrimaryKey(Type targetType, IDictionary<string, object> definition)
     {
         ThrowIfConfigured();
         ThrowIfNotClass(nameof(targetType), targetType);
         ThrowIfAlreadyMapped(targetType);
-        _primaryKeysMap[targetType] = new Dictionary<string, KeyDefinition>();
+        Dictionary<string, KeyDefinition> definitions = new Dictionary<string, KeyDefinition>();
         int pos = 0;
         foreach (string name in definition.Keys.OrderBy(v => v))
         {
-            _primaryKeysMap[targetType][name] = new KeyDefinition { Index = pos, Type = definition[name] };
+            definitions[name] = new KeyDefinition { Index = pos };
+            if (definition[name] is Type type)
+            {
+                definitions[name].Type = type;
+            }
+            else if (definition[name] is string path)
+            {
+                string[] parts = path.Split('/');
+                if (!string.Empty.Equals(parts[0]))
+                {
+                    throw new ArgumentException($"{nameof(definition)} path for name {name} must start with /");
+                }
+                if (parts.Length < 3)
+                {
+                    throw new ArgumentException($"{nameof(definition)} path for name {name} must have at least 2 parts");
+                }
+                definitions[name].Path = new PropertyInfo[parts.Length - 2];
+                Type current = targetType;
+                for (int i = 1; i < parts.Length - 1; ++i)
+                {
+                    PropertyInfo? propertyInfo = current.GetProperty(parts[i]);
+                    if (propertyInfo is null)
+                    {
+                        throw new ArgumentException($"{nameof(definition)} path for name {name} has invalid part: {parts[i]}");
+                    }
+                    current = propertyInfo.PropertyType;
+                    definitions[name].Path![i - 1] = propertyInfo;
+                }
+                definitions[name].KeyFieldName = parts[parts.Length - 1];
+            }
+            else
+            {
+                throw new ArgumentException($"{nameof(definition)} values can be Types or strings");
+            }
             ++pos;
         }
+        _primaryKeysMap[targetType] = definitions;
         return this;
     }
 
-    IKeyBoxConfiguration IKeyBoxConfiguration.AddPrimaryKey(Type targetType, Type exampleType)
-    {
-        ThrowIfConfigured();
-        ThrowIfNotClass(nameof(targetType), targetType);
-        ThrowIfNotClass(nameof(exampleType), exampleType);
-        ThrowIfAlreadyMapped(targetType);
-        _exampleKeyMap[targetType] = exampleType;
-        return this;
-    }
-
-    internal void CreateKeyRing(object source)
+    internal void CreateKeyRing(IServiceProvider serviceProvider, object source)
     {
         KeyRing? keyRing = null;
         if (!_attachedKeys.TryGetValue(source, out keyRing))
         {
-            Type? mapped = GetMappedType(source.GetType());
-            if (mapped is { })
+            Type? type = source.GetType();
+            if (_primaryKeysMap.ContainsKey(type))
             {
-                keyRing = new KeyRing(_primaryKeysMap[mapped]);
-                keyRing.PrimaryKey = new object[_primaryKeysMap[mapped].Count];
+                keyRing = new KeyRing(serviceProvider, _primaryKeysMap[type]);
+                keyRing.PrimaryKey = new object[_primaryKeysMap[type].Count];
                 keyRing.Source = source;
                 _attachedKeys.Add(source, keyRing);
             }
         }
     }
 
-    private Type? GetMappedType(Type actualType)
+    private void Commit(IServiceCollection services)
     {
-        Type? mapped = null;
-        if (!_mappedTypesCache.TryGetValue(actualType, out mapped))
+        List<Exception> exceptions = new();
+        CheckPaths(exceptions);
+        if(exceptions.Count > 0)
         {
-            Type? current = actualType;
-            while (current is { } && !_primaryKeysMap.ContainsKey(current))
-            {
-                current = current!.BaseType;
-            }
-            mapped = current;
-            _mappedTypesCache.TryAdd(actualType, mapped);
+            throw new AggregateException(exceptions);
         }
-        return mapped;
+        foreach (Type type in _primaryKeysMap.Keys)
+        {
+            if(services.Where(item => item.ServiceType == type).Count() == 0)
+            {
+                services.AddTransient(type);
+            }
+        }
+        _isConfigured = true;
     }
 
-    private void Commit()
+    private void CheckPaths(List<Exception> exceptions)
     {
-        MapExamples();
-        _isConfigured = true;
+        List<Type> toRemove = new();
+        foreach (KeyValuePair<Type, Dictionary<string, KeyDefinition>> definitions in _primaryKeysMap)
+        {
+            foreach (KeyValuePair<string, KeyDefinition> definition in definitions.Value)
+            {
+                if (definition.Value.Path is PropertyInfo[] path)
+                {
+                    Console.WriteLine(definitions.Key);
+                    Console.WriteLine(definition.Key);
+                    if (!_primaryKeysMap.ContainsKey(path.Last().PropertyType) || !_primaryKeysMap[path.Last().PropertyType].ContainsKey(definition.Value.KeyFieldName!))
+                    {
+                        toRemove.Add(definitions.Key);
+                        exceptions.Add(new ArgumentException($"The {nameof(KeyDefinition.Path)} at {nameof(IKeyBoxConfiguration.AddPrimaryKey)} "
+                        + $"for type {definitions.Key} and name {definition.Key} is invalid as primary key field {definition.Value.KeyFieldName} " 
+                        + $"is not defined for {path.Last().PropertyType}"));
+                    }
+                }
+            }
+        }
+        toRemove.ForEach(k => _primaryKeysMap.Remove(k));
     }
 
     private void ThrowIfAlreadyMapped(Type targetType)
     {
-        if (_primaryKeysMap.ContainsKey(targetType) || _exampleKeyMap.ContainsKey(targetType))
+        if (_primaryKeysMap.ContainsKey(targetType))
         {
             throw new InvalidOperationException($"Key for {targetType} is already mapped");
         }
@@ -125,60 +178,4 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
         }
     }
 
-    private void MapExamples()
-    {
-        if (_exampleKeyMap.Count > 0)
-        {
-            List<Type> notMapped = new();
-            Stack<Type> stack = new();
-            while (_exampleKeyMap.Count > 0)
-            {
-                if (stack.Count == 0)
-                {
-                    stack.Push(_exampleKeyMap.Keys.First());
-                }
-                if (!_primaryKeysMap.ContainsKey(stack.Peek()) && !_exampleKeyMap.ContainsKey(stack.Peek()))
-                {
-                    while (stack.Count > 0)
-                    {
-                        _exampleKeyMap.Remove(stack.Peek());
-                        notMapped.Add(stack.Pop());
-                    }
-                }
-                else if (_primaryKeysMap.ContainsKey(stack.Peek()))
-                {
-                    Dictionary<string, KeyDefinition> example = _primaryKeysMap[stack.Peek()];
-                    while (stack.Count > 0)
-                    {
-                        _exampleKeyMap.Remove(stack.Peek());
-                        _primaryKeysMap[stack.Pop()] = example;
-                    }
-                }
-                else
-                {
-                    if (stack.Contains(_exampleKeyMap[stack.Peek()]))
-                    {
-                        throw new Exception($"Example loop detected: {_exampleKeyMap[stack.Peek()]}");
-                    }
-                    stack.Push(_exampleKeyMap[stack.Peek()]);
-                }
-            }
-            if (stack.Count > 0)
-            {
-                notMapped.AddRange(stack);
-            }
-            if (notMapped.Count > 0)
-            {
-                List<string> list = notMapped.Select(t => t.ToString()).OrderBy(s => s).ToList();
-                for (int i = list.Count - 1; i > 0; --i)
-                {
-                    if (list[i - 1] == list[i])
-                    {
-                        list.RemoveAt(i);
-                    }
-                }
-                throw new Exception($"Keys not mapped for: {string.Join(", ", list)}");
-            }
-        }
-    }
 }
