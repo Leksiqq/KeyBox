@@ -63,16 +63,6 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
         return this;
     }
 
-    IKeyBoxConfiguration IKeyBoxConfiguration.AddForeignKey(Type targetType, IDictionary<string, Type> definition)
-    {
-        throw new NotImplementedException();
-    }
-
-    IKeyBoxConfiguration IKeyBoxConfiguration.AddForeignKey(Type targetType, Type exampleType)
-    {
-        throw new NotImplementedException();
-    }
-
     internal void CreateKeyRing(object source)
     {
         KeyRing? keyRing = null;
