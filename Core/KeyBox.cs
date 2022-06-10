@@ -8,6 +8,8 @@ namespace Net.Leksi.KeyBox;
 
 internal class KeyBox : IKeyBox, IKeyBoxConfiguration
 {
+    private const string _nullableAttributeName = "NullableAttribute";
+
     private readonly Dictionary<Type, Dictionary<string, KeyDefinition>> _primaryKeysMap = new();
     private readonly ConditionalWeakTable<object, KeyRing> _attachedKeys = new();
     private bool _isConfigured = false;
@@ -22,7 +24,6 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
         configure?.Invoke(instance);
         instance.Commit(services);
         services.AddSingleton<IKeyBox>(instance);
-
     }
 
     internal static void AddKeyBox(IHostBuilder builder, Action<IKeyBoxConfiguration> configure)
@@ -80,6 +81,12 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
                     if (propertyInfo is null)
                     {
                         throw new ArgumentException($"{nameof(definition)} path for name {name} has invalid part: {parts[i]}");
+                    }
+                    NullabilityInfoContext nullabilityInfo = new NullabilityInfoContext();
+                    var nullability = nullabilityInfo.Create(propertyInfo);
+                    if (nullability.WriteState is NullabilityState.Nullable)
+                    {
+                        throw new ArgumentException($"{nameof(definition)} path for name {name} has nullable part: {parts[i]}");
                     }
                     current = propertyInfo.PropertyType;
                     definitions[name].Path![i - 1] = propertyInfo;
@@ -139,8 +146,6 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
             {
                 if (definition.Value.Path is PropertyInfo[] path)
                 {
-                    Console.WriteLine(definitions.Key);
-                    Console.WriteLine(definition.Key);
                     if (!_primaryKeysMap.ContainsKey(path.Last().PropertyType) || !_primaryKeysMap[path.Last().PropertyType].ContainsKey(definition.Value.KeyFieldName!))
                     {
                         toRemove.Add(definitions.Key);

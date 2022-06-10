@@ -7,6 +7,7 @@ public class KeyRing : IKeyRing
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly Dictionary<string, KeyDefinition> _keyDefinition;
+    private readonly string[] _keyNames;
 
     internal object?[] PrimaryKey { get; set; } = null!;
     
@@ -35,6 +36,18 @@ public class KeyRing : IKeyRing
         }
     }
 
+    public object? this[int index]
+    {
+        get
+        {
+            return this[_keyNames[index]];
+        }
+        set
+        {
+            this[_keyNames[index]] = value;
+        }
+    }
+
     public bool IsCompleted
     {
         get
@@ -43,17 +56,21 @@ public class KeyRing : IKeyRing
         }
     }
 
-    public IEnumerable<string> Keys => _keyDefinition.Keys;
+    public IEnumerable<string> Keys => _keyNames;
 
-    public IEnumerable<object?> Values => _keyDefinition.Values.Select(v => PrimaryKey[v.Index]);
+    public IEnumerable<object?> Values => _keyNames.Select(k => this[k]);
 
     public int Count => _keyDefinition.Count;
 
-    public IEnumerable<KeyValuePair<string, object?>> Entries => 
-        _keyDefinition.Select(e => new KeyValuePair<string, object?>(e.Key, PrimaryKey[e.Value.Index]));
+    public IEnumerable<KeyValuePair<string, object?>> Entries =>
+        _keyNames.Select(k => new KeyValuePair<string, object?>(k, this[k]));
 
-    internal KeyRing(IServiceProvider serviceProvider, Dictionary<string, KeyDefinition> keyDefinition) =>
-        (_serviceProvider, _keyDefinition) = (serviceProvider, keyDefinition);
+    internal KeyRing(IServiceProvider serviceProvider, Dictionary<string, KeyDefinition> keyDefinition)
+    {
+        _serviceProvider = serviceProvider;
+        _keyDefinition = keyDefinition;
+        _keyNames = _keyDefinition.OrderBy(kv => kv.Value.Index).Select(kv => kv.Key).ToArray();
+    }
 
     public IKeyRing Set(string name, object value)
     {
@@ -64,13 +81,16 @@ public class KeyRing : IKeyRing
     private object GetTarget(PropertyInfo[] path)
     {
         object? target = Source;
+        object? value;
         foreach (PropertyInfo propertyInfo in path)
         {
-            target = propertyInfo.GetValue(target, null);
-            if (target is null)
+            value = propertyInfo.GetValue(target, null);
+            if (value is null)
             {
-                target = _serviceProvider.GetRequiredService(propertyInfo.PropertyType);
+                value = _serviceProvider.GetRequiredService(propertyInfo.PropertyType);
+                propertyInfo.SetValue(target, value);
             }
+            target = value;
         }
         return target;
     }

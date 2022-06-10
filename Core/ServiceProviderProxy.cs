@@ -2,12 +2,12 @@
 
 namespace Net.Leksi.KeyBox;
 
-public class ServiceProviderProxy : IServiceProvider
+internal class ServiceProviderProxy:IServiceProvider
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly KeyBox _keyBox;
 
-    public ServiceProviderProxy(IServiceProvider serviceProvider) => 
+    internal ServiceProviderProxy(IServiceProvider serviceProvider) => 
         (_serviceProvider, _keyBox) = (serviceProvider, (serviceProvider.GetRequiredService<IKeyBox>() as KeyBox)!);
 
     public object? GetService(Type serviceType)

@@ -1,4 +1,6 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 namespace Net.Leksi.KeyBox;
@@ -21,6 +23,21 @@ public static class KeyBoxExtensions
         where Target: class
     {
         return keyBoxConfiguration.AddPrimaryKey(typeof(Target), definition);
+    }
+
+    public static IApplicationBuilder UseKeyBox(this IApplicationBuilder app)
+    {
+        IKeyBox keyBox = app.ApplicationServices.GetRequiredService<IKeyBox>();
+
+        if (keyBox is { } && keyBox.HasMappedPrimaryKeys)
+        {
+            app.Use(async (HttpContext context, Func<Task>? next) =>
+            {
+                context.RequestServices = new ServiceProviderProxy(context.RequestServices);
+                await (next?.Invoke() ?? Task.CompletedTask);
+            });
+        }
+        return app;
     }
 
 }

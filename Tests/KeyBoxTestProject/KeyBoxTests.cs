@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Net.Leksi.KeyBox;
 using System.Diagnostics;
+using System.Text;
 
 namespace KeyBoxTestProject;
 
@@ -164,6 +165,17 @@ public class KeyBoxTests
             }).Build();
 
         }
+        {
+            IHost host = Host.CreateDefaultBuilder().AddKeyBox(config =>
+            {
+                ArgumentException ex = Assert.Catch<ArgumentException>(() =>
+                {
+                    config.AddPrimaryKey<Poco2>(new Dictionary<string, object>() { { "ID1", typeof(int) }, { "ID2", "/PocoNullable/ID2" } });
+                });
+                Assert.That(ex.Message, Is.EqualTo("definition path for name ID2 has nullable part: PocoNullable"));
+            }).Build();
+
+        }
         AggregateException aex = Assert.Catch<AggregateException>(() =>
         {
             IHost host = Host.CreateDefaultBuilder().AddKeyBox(config =>
@@ -198,6 +210,64 @@ public class KeyBoxTests
             config.AddPrimaryKey<Poco2>(new Dictionary<string, object>() { { "ID1", typeof(int) }, { "ID2", typeof(string) } });
 
         }).Build();
+
+        Poco1 poco1 = host.Services.GetRequiredService<Poco1>();
+        IKeyRing keyRing = host.Services.GetRequiredService<IKeyBox>().GetKeyRing(poco1);
+        keyRing["ID1"] = 1;
+        keyRing["ID2"] = "KEY";
+        Trace.WriteLine(Dump(host, poco1));
+        Assert.That(poco1.Poco, Is.Not.Null);
+        IKeyRing keyRing1 = host.Services.GetRequiredService<IKeyBox>().GetKeyRing(poco1.Poco);
+        Assert.That(keyRing1, Is.Not.Null);
+        Assert.That(keyRing["ID2"], Is.EqualTo(keyRing1["ID2"]));
+    }
+
+    private string Dump(IHost host, object? obj, StringBuilder sb = null)
+    {
+        if(sb is null)
+        {
+            sb = new StringBuilder();
+        }
+        if(obj is null)
+        {
+            sb.Append("NULL");
+        }
+        else
+        {
+            Type type = obj.GetType();
+            string tab = "    ";
+            string indention = string.Join(tab, Environment.StackTrace.Split('\n').Select(s => s.Trim()).Where(s => s.Contains(nameof(Dump))).Select(s => String.Empty));
+            if (type.IsClass)
+            {
+                IKeyRing keyRing = host.Services.GetRequiredService<IKeyBox>().GetKeyRing(obj);
+                if(keyRing is { })
+                {
+                    sb.Append("{\n");
+                    foreach (var entry in keyRing.Entries)
+                    {
+                        sb.Append(indention).Append(tab).Append(entry.Key).Append(": ");
+                        Dump(host, entry.Value, sb);
+                        sb.AppendLine();
+                    }
+                    foreach(var pi in type.GetProperties())
+                    {
+                        sb.Append(indention).Append(tab).Append(pi.Name).Append(": ");
+                        Dump(host, pi.GetValue(obj), sb);
+                        sb.AppendLine();
+                    }
+                    sb.Append(indention).Append("}");
+                }
+                else
+                {
+                    sb.Append(obj);
+                }
+            }
+            else
+            {
+                sb.Append(obj);
+            }
+        }
+        return sb.ToString();
     }
 
 }
