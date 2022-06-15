@@ -19,7 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\Core\KeyBoxDebug.csproj" />
+    <ProjectReference Include="..\..\Library\KeyBoxDebug.csproj" />
   </ItemGroup>
 
 </Project>

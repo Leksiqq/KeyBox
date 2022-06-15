@@ -208,6 +208,7 @@ public class KeyBoxTests
         {
             config.AddPrimaryKey<Poco1>(new Dictionary<string, object>() { { "ID1", typeof(int) }, { "ID2", "/Poco/ID2" } });
             config.AddPrimaryKey<Poco2>(new Dictionary<string, object>() { { "ID1", typeof(int) }, { "ID2", typeof(string) } });
+            config.AddPrimaryKey<Poco3>(new Dictionary<string, object>() { { "Code", "/Code" } });
 
         }).Build();
 
@@ -220,6 +221,32 @@ public class KeyBoxTests
         IKeyRing keyRing1 = host.Services.GetRequiredService<IKeyBox>().GetKeyRing(poco1.Poco);
         Assert.That(keyRing1, Is.Not.Null);
         Assert.That(keyRing["ID2"], Is.EqualTo(keyRing1["ID2"]));
+        Poco3 poco3 = host.Services.GetRequiredService<Poco3>();
+        keyRing = host.Services.GetRequiredService<IKeyBox>().GetKeyRing(poco3);
+        keyRing["Code"] = "SFX";
+        Trace.WriteLine(Dump(host, poco3));
+    }
+
+    [Test]
+    public void KeyEquality()
+    {
+        KeyEqualityComparer kec = new();
+
+        Trace.WriteLine(kec.Equals(e1(), e2()));
+    }
+
+    private IEnumerable<object> e1()
+    {
+        yield return 1;
+        yield return 2;
+        yield return 3;
+    }
+
+    private IEnumerable<object> e2()
+    {
+        yield return 1;
+        yield return 2;
+        yield return 3;
     }
 
     private string Dump(IHost host, object? obj, StringBuilder sb = null)
@@ -290,4 +317,7 @@ public class Poco2 : IPoco2_1, IPoco2_2, IPoco2_3
     public Poco3 Poco { get; set; }
     public Poco3? PocoNullable { get; set; }
 }
-public class Poco3 : IPoco3_1, IPoco3_2, IPoco3_3 { }
+public class Poco3 : IPoco3_1, IPoco3_2, IPoco3_3 
+{
+    public string Code { get; set; }
+}

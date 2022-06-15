@@ -69,29 +69,35 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
                 {
                     throw new ArgumentException($"{nameof(definition)} path for name {name} must start with /");
                 }
-                if (parts.Length < 3)
-                {
-                    throw new ArgumentException($"{nameof(definition)} path for name {name} must have at least 2 parts");
-                }
-                definitions[name].Path = new PropertyInfo[parts.Length - 2];
+                List<PropertyInfo> propertyInfos = new();
                 Type current = targetType;
-                for (int i = 1; i < parts.Length - 1; ++i)
+                for (int i = 1; i < parts.Length; ++i)
                 {
                     PropertyInfo? propertyInfo = current.GetProperty(parts[i]);
                     if (propertyInfo is null)
                     {
-                        throw new ArgumentException($"{nameof(definition)} path for name {name} has invalid part: {parts[i]}");
-                    }
-                    NullabilityInfoContext nullabilityInfo = new NullabilityInfoContext();
-                    var nullability = nullabilityInfo.Create(propertyInfo);
-                    if (nullability.WriteState is NullabilityState.Nullable)
+                        if(i < parts.Length - 1)
+                        {
+                            throw new ArgumentException($"{nameof(definition)} path for name {name} has invalid part: {parts[i]}");
+                        }
+                        else
+                        {
+                            definitions[name].KeyFieldName = parts[i];
+                        }
+                    } 
+                    else
                     {
-                        throw new ArgumentException($"{nameof(definition)} path for name {name} has nullable part: {parts[i]}");
+                        NullabilityInfoContext nullabilityInfo = new NullabilityInfoContext();
+                        var nullability = nullabilityInfo.Create(propertyInfo);
+                        if (nullability.WriteState is NullabilityState.Nullable)
+                        {
+                            throw new ArgumentException($"{nameof(definition)} path for name {name} has nullable part: {parts[i]}");
+                        }
+                        current = propertyInfo.PropertyType;
+                        propertyInfos.Add(propertyInfo);
                     }
-                    current = propertyInfo.PropertyType;
-                    definitions[name].Path![i - 1] = propertyInfo;
                 }
-                definitions[name].KeyFieldName = parts[parts.Length - 1];
+                definitions[name].Path = propertyInfos.ToArray();
             }
             else
             {
@@ -111,9 +117,7 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
             Type? type = source.GetType();
             if (_primaryKeysMap.ContainsKey(type))
             {
-                keyRing = new KeyRing(serviceProvider, _primaryKeysMap[type]);
-                keyRing.PrimaryKey = new object[_primaryKeysMap[type].Count];
-                keyRing.Source = source;
+                keyRing = new KeyRing(serviceProvider, _primaryKeysMap[type], source);
                 _attachedKeys.Add(source, keyRing);
             }
         }
@@ -146,13 +150,16 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
             {
                 if (definition.Value.Path is PropertyInfo[] path)
                 {
-                    if (!_primaryKeysMap.ContainsKey(path.Last().PropertyType) || !_primaryKeysMap[path.Last().PropertyType].ContainsKey(definition.Value.KeyFieldName!))
-                    {
-                        toRemove.Add(definitions.Key);
-                        exceptions.Add(new ArgumentException($"The {nameof(KeyDefinition.Path)} at {nameof(IKeyBoxConfiguration.AddPrimaryKey)} "
-                        + $"for type {definitions.Key} and name {definition.Key} is invalid as primary key field {definition.Value.KeyFieldName} " 
-                        + $"is not defined for {path.Last().PropertyType}"));
-                    }
+                    Console.WriteLine(String.Join(", ", path.Select(p => p.ToString())) + ", " + definition.Value.KeyFieldName);
+                    //if (
+                    //    !(!_primaryKeysMap.ContainsKey(path.Last().PropertyType) && definition.Value.KeyFieldName is null)
+                    //    || !_primaryKeysMap.ContainsKey(path.Last().PropertyType) || !_primaryKeysMap[path.Last().PropertyType].ContainsKey(definition.Value.KeyFieldName!))
+                    //{
+                    //    toRemove.Add(definitions.Key);
+                    //    exceptions.Add(new ArgumentException($"The {nameof(KeyDefinition.Path)} at {nameof(IKeyBoxConfiguration.AddPrimaryKey)} "
+                    //    + $"for type {definitions.Key} and name {definition.Key} is invalid as primary key field {definition.Value.KeyFieldName} " 
+                    //    + $"is not defined for {path.Last().PropertyType}"));
+                    //}
                 }
             }
         }
