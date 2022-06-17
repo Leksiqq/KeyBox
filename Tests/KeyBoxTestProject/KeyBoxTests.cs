@@ -19,46 +19,55 @@ public class KeyBoxTests
     [Test]
     public void ThrowIfAlreadyMappedTest()
     {
-        IHost host = Host.CreateDefaultBuilder().AddKeyBox(config =>
+        IHost host = Host.CreateDefaultBuilder().ConfigureServices(services =>
         {
-            config.AddPrimaryKey<Poco1>(new Dictionary<string, object>() { { "ID", typeof(int) } });
-            InvalidOperationException ex = Assert.Catch<InvalidOperationException>(() =>
-                config.AddPrimaryKey<Poco1>(new Dictionary<string, object>() { { "ID", typeof(int) } })
-            );
-            Assert.That(ex.Message, Is.EqualTo($"Key for {typeof(Poco1)} is already mapped"));
+            services.AddKeyBox(config =>
+            {
+                config.AddPrimaryKey<Poco1>(new Dictionary<string, object>() { { "ID", typeof(int) } });
+                InvalidOperationException ex = Assert.Catch<InvalidOperationException>(() =>
+                    config.AddPrimaryKey<Poco1>(new Dictionary<string, object>() { { "ID", typeof(int) } })
+                );
+                Assert.That(ex.Message, Is.EqualTo($"Key for {typeof(Poco1)} is already mapped"));
 
+            });
         }).Build();
     }
 
     [Test]
     public void ThrowIfNotClassTest()
     {
-        IHost host = Host.CreateDefaultBuilder().AddKeyBox(config =>
+        IHost host = Host.CreateDefaultBuilder().ConfigureServices(services =>
         {
-            ArgumentException ex = Assert.Catch<ArgumentException>(() =>
-                config.AddPrimaryKey(typeof(int), new Dictionary<string, object>() { { "ID", typeof(int) } })
-            );
-            Assert.That(ex.Message, Is.EqualTo("targetType must be a class"));
+            services.AddKeyBox(config =>
+            {
+                ArgumentException ex = Assert.Catch<ArgumentException>(() =>
+                    config.AddPrimaryKey(typeof(int), new Dictionary<string, object>() { { "ID", typeof(int) } })
+                );
+                Assert.That(ex.Message, Is.EqualTo("targetType must be a class"));
 
-            ex = Assert.Catch<ArgumentException>(() =>
-                config.AddPrimaryKey(typeof(IPoco1_1), new Dictionary<string, object>() { { "ID", typeof(int) } })
-            );
-            Assert.That(ex.Message, Is.EqualTo("targetType must be a class"));
+                ex = Assert.Catch<ArgumentException>(() =>
+                    config.AddPrimaryKey(typeof(IPoco1_1), new Dictionary<string, object>() { { "ID", typeof(int) } })
+                );
+                Assert.That(ex.Message, Is.EqualTo("targetType must be a class"));
 
-            ex = Assert.Catch<ArgumentException>(() =>
-                config.AddPrimaryKey(typeof(DateTime), new Dictionary<string, object>() { { "ID", typeof(int) } })
-            );
-            Assert.That(ex.Message, Is.EqualTo("targetType must be a class"));
+                ex = Assert.Catch<ArgumentException>(() =>
+                    config.AddPrimaryKey(typeof(DateTime), new Dictionary<string, object>() { { "ID", typeof(int) } })
+                );
+                Assert.That(ex.Message, Is.EqualTo("targetType must be a class"));
+            });
         }).Build();
     }
 
     [Test]
     public void ThrowIfConfiguredTest()
     {
-        IHost host = Host.CreateDefaultBuilder().AddKeyBox(config =>
+        IHost host = Host.CreateDefaultBuilder().ConfigureServices(services =>
+        {
+            services.AddKeyBox(config =>
         {
             config.AddPrimaryKey<Poco1>(new Dictionary<string, object>() { { "ID", typeof(int) } });
             config.AddPrimaryKey<Poco2>(new Dictionary<string, object>() { { "ID1", typeof(int) }, { "ID2", typeof(string) } });
+        });
         }).Build();
 
         if (host.Services.GetRequiredService<IKeyBox>() is IKeyBoxConfiguration config)
@@ -90,11 +99,12 @@ public class KeyBoxTests
             services.AddTransient<IPoco3_1, Poco3>();
             services.AddTransient<IPoco3_2, Poco3>();
             services.AddTransient<IPoco3_3, Poco3>();
-        }).AddKeyBox(config =>
-        {
-            config.AddPrimaryKey<Poco1>(new Dictionary<string, object>() { { "ID1", typeof(int) } });
-            config.AddPrimaryKey<Poco2>(new Dictionary<string, object>() { { "ID1", typeof(int) }, { "ID2", typeof(string) } });
+            services.AddKeyBox(config =>
+            {
+                config.AddPrimaryKey<Poco1>(new Dictionary<string, object>() { { "ID1", typeof(int) } });
+                config.AddPrimaryKey<Poco2>(new Dictionary<string, object>() { { "ID1", typeof(int) }, { "ID2", typeof(string) } });
 
+            });
         }).Build();
 
         IKeyBox keyBox = host.Services.GetRequiredService<IKeyBox>();
@@ -133,61 +143,75 @@ public class KeyBoxTests
     public void ThrowIfInvalidPathTest()
     {
         {
-            IHost host = Host.CreateDefaultBuilder().AddKeyBox(config =>
+            IHost host = Host.CreateDefaultBuilder().ConfigureServices(services =>
             {
-                ArgumentException ex = Assert.Catch<ArgumentException>(() =>
+                services.AddKeyBox(config =>
                 {
-                    config.AddPrimaryKey<Poco1>(new Dictionary<string, object>() { { "ID1", typeof(int) }, { "ID2", "Poco/ID2" } });
+                    ArgumentException ex = Assert.Catch<ArgumentException>(() =>
+                    {
+                        config.AddPrimaryKey<Poco1>(new Dictionary<string, object>() { { "ID1", typeof(int) }, { "ID2", "Poco/ID2" } });
+                    });
+                    Assert.That(ex.Message, Is.EqualTo("definition path for name ID2 must start with /"));
                 });
-                Assert.That(ex.Message, Is.EqualTo("definition path for name ID2 must start with /"));
             }).Build();
 
         }
         {
-            IHost host = Host.CreateDefaultBuilder().AddKeyBox(config =>
+            IHost host = Host.CreateDefaultBuilder().ConfigureServices(services =>
             {
-                ArgumentException ex = Assert.Catch<ArgumentException>(() =>
+                services.AddKeyBox(config =>
                 {
-                    config.AddPrimaryKey<Poco1>(new Dictionary<string, object>() { { "ID1", typeof(int) }, { "ID2", "/ID2" } });
+                    ArgumentException ex = Assert.Catch<ArgumentException>(() =>
+                    {
+                        config.AddPrimaryKey<Poco1>(new Dictionary<string, object>() { { "ID1", typeof(int) }, { "ID2", "/ID2" } });
+                    });
+                    Assert.That(ex.Message, Is.EqualTo("definition path for name ID2 must have at least 2 parts"));
                 });
-                Assert.That(ex.Message, Is.EqualTo("definition path for name ID2 must have at least 2 parts"));
             }).Build();
 
         }
         {
-            IHost host = Host.CreateDefaultBuilder().AddKeyBox(config =>
+            IHost host = Host.CreateDefaultBuilder().ConfigureServices(services =>
             {
-                ArgumentException ex = Assert.Catch<ArgumentException>(() =>
+                services.AddKeyBox(config =>
                 {
-                    config.AddPrimaryKey<Poco1>(new Dictionary<string, object>() { { "ID1", typeof(int) }, { "ID2", "/Poco2/ID2" } });
+                    ArgumentException ex = Assert.Catch<ArgumentException>(() =>
+                    {
+                        config.AddPrimaryKey<Poco1>(new Dictionary<string, object>() { { "ID1", typeof(int) }, { "ID2", "/Poco2/ID2" } });
+                    });
+                    Assert.That(ex.Message, Is.EqualTo("definition path for name ID2 has invalid part: Poco2"));
                 });
-                Assert.That(ex.Message, Is.EqualTo("definition path for name ID2 has invalid part: Poco2"));
             }).Build();
 
         }
         {
-            IHost host = Host.CreateDefaultBuilder().AddKeyBox(config =>
+            IHost host = Host.CreateDefaultBuilder().ConfigureServices(services =>
+            {
+                services.AddKeyBox(config =>
             {
                 ArgumentException ex = Assert.Catch<ArgumentException>(() =>
                 {
                     config.AddPrimaryKey<Poco2>(new Dictionary<string, object>() { { "ID1", typeof(int) }, { "ID2", "/PocoNullable/ID2" } });
                 });
                 Assert.That(ex.Message, Is.EqualTo("definition path for name ID2 has nullable part: PocoNullable"));
+            });
             }).Build();
 
         }
         AggregateException aex = Assert.Catch<AggregateException>(() =>
         {
-            IHost host = Host.CreateDefaultBuilder().AddKeyBox(config =>
+            IHost host = Host.CreateDefaultBuilder().ConfigureServices(services =>
             {
-                config.AddPrimaryKey<Poco1>(new Dictionary<string, object>() { { "ID1", typeof(int) }, { "ID2", "/Poco/ID2" } });
-                config.AddPrimaryKey<Poco2>(new Dictionary<string, object>() { { "ID1", typeof(int) }, { "ID2", typeof(string) }, { "ID3", "/Poco/ID" } });
-
+                services.AddKeyBox(config =>
+                {
+                    config.AddPrimaryKey<Poco1>(new Dictionary<string, object>() { { "ID1", typeof(int) }, { "ID2", "/Poco/ID2" } });
+                    config.AddPrimaryKey<Poco2>(new Dictionary<string, object>() { { "ID1", typeof(int) }, { "ID2", typeof(string) }, { "ID3", "/Poco/ID" } });
+                });
             }).Build();
         });
         Assert.That(aex.InnerExceptions.Count, Is.EqualTo(1));
         Assert.That(aex.InnerExceptions[0].GetType(), Is.EqualTo(typeof(ArgumentException)));
-        Assert.That(aex.InnerExceptions[0].Message, Is.EqualTo("The Path at AddPrimaryKey for type KeyBoxTestProject.Poco2 and name ID3 is invalid as primary key field ID is not defined for KeyBoxTestProject.Poco3"));
+        Assert.That(aex.InnerExceptions[0].Message, Is.EqualTo("The PropertiesPath at AddPrimaryKey for type KeyBoxTestProject.Poco2 and name ID3 is invalid as primary key field ID is not defined for KeyBoxTestProject.Poco3"));
     }
 
     [Test]
@@ -204,12 +228,13 @@ public class KeyBoxTests
             services.AddTransient<IPoco3_1, Poco3>();
             services.AddTransient<IPoco3_2, Poco3>();
             services.AddTransient<IPoco3_3, Poco3>();
-        }).AddKeyBox(config =>
-        {
-            config.AddPrimaryKey<Poco1>(new Dictionary<string, object>() { { "ID1", typeof(int) }, { "ID2", "/Poco/ID2" } });
-            config.AddPrimaryKey<Poco2>(new Dictionary<string, object>() { { "ID1", typeof(int) }, { "ID2", typeof(string) } });
-            config.AddPrimaryKey<Poco3>(new Dictionary<string, object>() { { "Code", "/Code" } });
+            services.AddKeyBox(config =>
+            {
+                config.AddPrimaryKey<Poco1>(new Dictionary<string, object>() { { "ID1", typeof(int) }, { "ID2", "/Poco/ID2" } });
+                config.AddPrimaryKey<Poco2>(new Dictionary<string, object>() { { "ID1", typeof(int) }, { "ID2", typeof(string) } });
+                config.AddPrimaryKey<Poco3>(new Dictionary<string, object>() { { "Code", "/Code" } });
 
+            });
         }).Build();
 
         Poco1 poco1 = host.Services.GetRequiredService<Poco1>();
@@ -224,38 +249,17 @@ public class KeyBoxTests
         Poco3 poco3 = host.Services.GetRequiredService<Poco3>();
         keyRing = host.Services.GetRequiredService<IKeyBox>().GetKeyRing(poco3);
         keyRing["Code"] = "SFX";
+        Assert.That(poco3.Code, Is.EqualTo("SFX"));
         Trace.WriteLine(Dump(host, poco3));
-    }
-
-    [Test]
-    public void KeyEquality()
-    {
-        KeyEqualityComparer kec = new();
-
-        Trace.WriteLine(kec.Equals(e1(), e2()));
-    }
-
-    private IEnumerable<object> e1()
-    {
-        yield return 1;
-        yield return 2;
-        yield return 3;
-    }
-
-    private IEnumerable<object> e2()
-    {
-        yield return 1;
-        yield return 2;
-        yield return 3;
     }
 
     private string Dump(IHost host, object? obj, StringBuilder sb = null)
     {
-        if(sb is null)
+        if (sb is null)
         {
             sb = new StringBuilder();
         }
-        if(obj is null)
+        if (obj is null)
         {
             sb.Append("NULL");
         }
@@ -267,7 +271,7 @@ public class KeyBoxTests
             if (type.IsClass)
             {
                 IKeyRing keyRing = host.Services.GetRequiredService<IKeyBox>().GetKeyRing(obj);
-                if(keyRing is { })
+                if (keyRing is { })
                 {
                     sb.Append("{\n");
                     foreach (var entry in keyRing.Entries)
@@ -276,7 +280,7 @@ public class KeyBoxTests
                         Dump(host, entry.Value, sb);
                         sb.AppendLine();
                     }
-                    foreach(var pi in type.GetProperties())
+                    foreach (var pi in type.GetProperties())
                     {
                         sb.Append(indention).Append(tab).Append(pi.Name).Append(": ");
                         Dump(host, pi.GetValue(obj), sb);
@@ -317,7 +321,7 @@ public class Poco2 : IPoco2_1, IPoco2_2, IPoco2_3
     public Poco3 Poco { get; set; }
     public Poco3? PocoNullable { get; set; }
 }
-public class Poco3 : IPoco3_1, IPoco3_2, IPoco3_3 
+public class Poco3 : IPoco3_1, IPoco3_2, IPoco3_3
 {
     public string Code { get; set; }
 }

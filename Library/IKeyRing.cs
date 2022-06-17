@@ -5,7 +5,6 @@ public interface IKeyRing
     object? this[string name] { get; set; }
     IEnumerable<string> Keys { get; }
     IEnumerable<object?> Values { get; }
-    IEnumerable<object?> PrimaryKey { get; }
     IEnumerable<KeyValuePair<string, object?>> Entries { get; }
     bool IsCompleted { get; }
     int Count { get; }

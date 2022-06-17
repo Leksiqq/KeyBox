@@ -13,8 +13,7 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
     private readonly Dictionary<Type, Dictionary<string, KeyDefinition>> _primaryKeysMap = new();
     private readonly ConditionalWeakTable<object, KeyRing> _attachedKeys = new();
     private bool _isConfigured = false;
-
-    public bool HasMappedPrimaryKeys => _primaryKeysMap.Count > 0;
+    private IServiceProvider _serviceProvider = null!;
 
     private KeyBox() { }
 
@@ -23,15 +22,18 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
         KeyBox instance = new();
         configure?.Invoke(instance);
         instance.Commit(services);
-        services.AddSingleton<IKeyBox>(instance);
+        services.AddSingleton<IKeyBox>(services => 
+        {
+            instance._serviceProvider = services;
+            return instance;
+        });
     }
 
-    internal static void AddKeyBox(IHostBuilder builder, Action<IKeyBoxConfiguration> configure)
+
+    bool IKeyBox.HasMappedPrimaryKeys(Type type)
     {
-        builder.UseServiceProviderFactory(new ServiceProviderFactory()).ConfigureServices((context, services) =>
-        {
-            AddKeyBox(services, configure);
-        });
+        return _primaryKeysMap.ContainsKey(type) 
+            || type.IsInterface && _primaryKeysMap.Keys.Where(t => type.IsAssignableFrom(t)).FirstOrDefault() is Type;
     }
 
     IKeyRing? IKeyBox.GetKeyRing(object? source)
@@ -40,12 +42,21 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
         {
             throw new ArgumentNullException(nameof(source));
         }
-        KeyRing? keyRing = null;
-        if (_attachedKeys.TryGetValue(source, out keyRing))
+        lock(source)
         {
+            KeyRing? keyRing = null;
+            if (_attachedKeys.TryGetValue(source, out keyRing))
+            {
+                return keyRing;
+            }
+            Type? type = source.GetType();
+            if (_primaryKeysMap.ContainsKey(type))
+            {
+                keyRing = new KeyRing(_serviceProvider, _primaryKeysMap[type], source);
+                _attachedKeys.Add(source, keyRing);
+            }
             return keyRing;
         }
-        return null;
     }
 
     IKeyBoxConfiguration IKeyBoxConfiguration.AddPrimaryKey(Type targetType, IDictionary<string, object> definition)
@@ -57,10 +68,9 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
         int pos = 0;
         foreach (string name in definition.Keys.OrderBy(v => v))
         {
-            definitions[name] = new KeyDefinition { Index = pos };
             if (definition[name] is Type type)
             {
-                definitions[name].Type = type;
+                definitions[name] = new KeyDefinitionByType { Type = type };
             }
             else if (definition[name] is string path)
             {
@@ -80,9 +90,13 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
                         {
                             throw new ArgumentException($"{nameof(definition)} path for name {name} has invalid part: {parts[i]}");
                         }
+                        else if (parts.Length < 3)
+                        {
+                            throw new ArgumentException($"{nameof(definition)} path for name {name} must have at least 2 parts");
+                        }
                         else
                         {
-                            definitions[name].KeyFieldName = parts[i];
+                            definitions[name] = new KeyDefinitionByKey { KeyFieldName = parts[i] };
                         }
                     } 
                     else
@@ -97,30 +111,21 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
                         propertyInfos.Add(propertyInfo);
                     }
                 }
-                definitions[name].Path = propertyInfos.ToArray();
+                if(!definitions.ContainsKey(name))
+                {
+                    definitions[name] = new KeyDefinitionByProperty { PropertiesPath = propertyInfos.ToArray() };
+                }
+                (definitions[name] as KeyDefinitionByProperty).PropertiesPath = propertyInfos.ToArray();
             }
             else
             {
                 throw new ArgumentException($"{nameof(definition)} values can be Types or strings");
             }
+            definitions[name].Index = pos;
             ++pos;
         }
         _primaryKeysMap[targetType] = definitions;
         return this;
-    }
-
-    internal void CreateKeyRing(IServiceProvider serviceProvider, object source)
-    {
-        KeyRing? keyRing = null;
-        if (!_attachedKeys.TryGetValue(source, out keyRing))
-        {
-            Type? type = source.GetType();
-            if (_primaryKeysMap.ContainsKey(type))
-            {
-                keyRing = new KeyRing(serviceProvider, _primaryKeysMap[type], source);
-                _attachedKeys.Add(source, keyRing);
-            }
-        }
     }
 
     private void Commit(IServiceCollection services)
@@ -148,18 +153,18 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
         {
             foreach (KeyValuePair<string, KeyDefinition> definition in definitions.Value)
             {
-                if (definition.Value.Path is PropertyInfo[] path)
+                if (definition.Value is KeyDefinitionByKey definitionByKey)
                 {
-                    Console.WriteLine(String.Join(", ", path.Select(p => p.ToString())) + ", " + definition.Value.KeyFieldName);
-                    //if (
-                    //    !(!_primaryKeysMap.ContainsKey(path.Last().PropertyType) && definition.Value.KeyFieldName is null)
-                    //    || !_primaryKeysMap.ContainsKey(path.Last().PropertyType) || !_primaryKeysMap[path.Last().PropertyType].ContainsKey(definition.Value.KeyFieldName!))
-                    //{
-                    //    toRemove.Add(definitions.Key);
-                    //    exceptions.Add(new ArgumentException($"The {nameof(KeyDefinition.Path)} at {nameof(IKeyBoxConfiguration.AddPrimaryKey)} "
-                    //    + $"for type {definitions.Key} and name {definition.Key} is invalid as primary key field {definition.Value.KeyFieldName} " 
-                    //    + $"is not defined for {path.Last().PropertyType}"));
-                    //}
+                    if (
+                        !_primaryKeysMap.ContainsKey(definitionByKey.PropertiesPath.Last().PropertyType) 
+                        || !_primaryKeysMap[definitionByKey.PropertiesPath.Last().PropertyType].ContainsKey(definitionByKey.KeyFieldName!)
+                    )
+                    {
+                        toRemove.Add(definitions.Key);
+                        exceptions.Add(new ArgumentException($"The {nameof(definitionByKey.PropertiesPath)} at {nameof(IKeyBoxConfiguration.AddPrimaryKey)} "
+                        + $"for type {definitions.Key} and name {definition.Key} is invalid as primary key field {definitionByKey.KeyFieldName} "
+                        + $"is not defined for {definitionByKey.PropertiesPath.Last().PropertyType}"));
+                    }
                 }
             }
         }
@@ -189,5 +194,4 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
             throw new InvalidOperationException($"{typeof(IKeyBox)} is already configured");
         }
     }
-
 }

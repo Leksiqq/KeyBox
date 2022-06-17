@@ -21,8 +21,6 @@ builder.Services.AddTransient<IPoco3_3, Poco3>();
 
 var app = builder.Build();
 
-app.UseKeyBox();
-
 app.MapGet("/", async context => 
 {
     IPoco1_1 poco1_1 = context.RequestServices.GetRequiredService<IPoco1_1>();

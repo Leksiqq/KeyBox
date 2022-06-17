@@ -3,7 +3,7 @@ using System.Reflection;
 
 namespace Net.Leksi.KeyBox;
 
-public class KeyRing : IKeyRing
+internal class KeyRing : IKeyRing
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly Dictionary<string, KeyDefinition> _keyDefinition;
@@ -17,32 +17,36 @@ public class KeyRing : IKeyRing
     { 
         get 
         {
-            if(_keyDefinition[name].Type is Type type)
+            if(_keyDefinition[name] is KeyDefinitionByType)
             {
                 return _primaryKey[_keyDefinition[name].Index];
             }
-            if (_keyDefinition[name].KeyFieldName is { })
+            if (_keyDefinition[name] is KeyDefinitionByKey definitionByKey)
             {
-                return _serviceProvider.GetRequiredService<IKeyBox>().GetKeyRing(GetTarget(_keyDefinition[name].Path!))?[_keyDefinition[name].KeyFieldName!];
+                return _serviceProvider.GetRequiredService<IKeyBox>().GetKeyRing(GetTarget(definitionByKey.PropertiesPath!))?[definitionByKey.KeyFieldName!];
             }
-            return GetValue(_keyDefinition[name].Path!);
-        } 
+            if (_keyDefinition[name] is KeyDefinitionByProperty definitionByProperty)
+            {
+                return GetValue(definitionByProperty.PropertiesPath!);
+            }
+            return null;
+        }
         set 
         {
-            if (_keyDefinition[name].Type is Type type)
+            if (_keyDefinition[name] is KeyDefinitionByType definitionByType)
             {
-                _primaryKey[_keyDefinition[name].Index] = value;
+                _primaryKey[_keyDefinition[name].Index] = Convert.ChangeType(value, definitionByType.Type);
             } 
-            else if(_keyDefinition[name].KeyFieldName is { })
+            else if(_keyDefinition[name] is KeyDefinitionByKey definitionByKey)
             {
-                if (_serviceProvider.GetRequiredService<IKeyBox>().GetKeyRing(GetTarget(_keyDefinition[name].Path!)) is IKeyRing keyRing)
+                if (_serviceProvider.GetRequiredService<IKeyBox>().GetKeyRing(GetTarget(definitionByKey.PropertiesPath!)) is IKeyRing keyRing)
                 {
-                    keyRing[_keyDefinition[name].KeyFieldName!] = value;
+                    keyRing[definitionByKey.KeyFieldName!] = value;
                 }
             }
-            else
+            else if (_keyDefinition[name] is KeyDefinitionByProperty definitionByProperty)
             {
-                SetValue(_keyDefinition[name].Path!, value);
+                SetValue(definitionByProperty.PropertiesPath!, value);
             }
         }
     }
@@ -67,8 +71,6 @@ public class KeyRing : IKeyRing
         }
     }
 
-    public IEnumerable<object?> PrimaryKey => _primaryKey.Select(v => v);
-
     public IEnumerable<string> Keys => _keyNames;
 
     public IEnumerable<object?> Values => _keyNames.Select(k => this[k]);
@@ -84,7 +86,7 @@ public class KeyRing : IKeyRing
         _serviceProvider = serviceProvider;
         _keyDefinition = keyDefinition;
         _keyNames = _keyDefinition.OrderBy(kv => kv.Value.Index).Select(kv => kv.Key).ToArray();
-        _primaryKey = new object[_keyNames.Length];
+        _primaryKey = new object[keyDefinition.Count];
     }
 
     public IKeyRing Set(string name, object value)
@@ -96,23 +98,15 @@ public class KeyRing : IKeyRing
     private object? GetValue(PropertyInfo[] path)
     {
         object? target = Source;
-        object? value;
         for (int i = 0; i < path.Length; ++i)
         {
-            if (i < path.Length - 1)
+            object? next = path[i].GetValue(target);
+            if (next is null && i < path.Length - 1)
             {
-                value = path[i].GetValue(target, null);
-                if (value is null)
-                {
-                    value = _serviceProvider.GetRequiredService(path[i].PropertyType);
-                    path[i].SetValue(target, value);
-                }
-                target = value;
+                next = _serviceProvider.GetRequiredService(path[i].PropertyType);
+                path[i].SetValue(target, next);
             }
-            else
-            {
-                target = path[i].GetValue(target);
-            }
+            target = next;
         }
         return target;
     }
@@ -120,18 +114,17 @@ public class KeyRing : IKeyRing
     private void SetValue(PropertyInfo[] path, object? value)
     {
         object? target = Source;
-        object? value1;
         for (int i = 0; i < path.Length; ++i)
         {
             if (i < path.Length - 1)
             {
-                value1 = path[i].GetValue(target, null);
-                if (value1 is null)
+                object? next = path[i].GetValue(target);
+                if (next is null)
                 {
-                    value1 = _serviceProvider.GetRequiredService(path[i].PropertyType);
-                    path[i].SetValue(target, value1);
+                    next = _serviceProvider.GetRequiredService(path[i].PropertyType);
+                    path[i].SetValue(target, next);
                 }
-                target = value1;
+                target = next;
             }
             else
             {
@@ -143,16 +136,15 @@ public class KeyRing : IKeyRing
     private object GetTarget(PropertyInfo[] path)
     {
         object? target = Source;
-        object? value;
-        foreach (PropertyInfo propertyInfo in path)
+        for (int i = 0; i < path.Length; ++i)
         {
-            value = propertyInfo.GetValue(target, null);
-            if (value is null)
+            object? next = path[i].GetValue(target);
+            if (next is null)
             {
-                value = _serviceProvider.GetRequiredService(propertyInfo.PropertyType);
-                propertyInfo.SetValue(target, value);
+                next = _serviceProvider.GetRequiredService(path[i].PropertyType);
+                path[i].SetValue(target, next);
             }
-            target = value;
+            target = next;
         }
         return target;
     }
