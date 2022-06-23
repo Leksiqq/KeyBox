@@ -17,10 +17,6 @@ internal class KeyRing : IKeyRing
     { 
         get 
         {
-            if(_keyDefinition[name] is KeyDefinitionByType)
-            {
-                return _primaryKey[_keyDefinition[name].Index];
-            }
             if (_keyDefinition[name] is KeyDefinitionByKey definitionByKey)
             {
                 return _serviceProvider.GetRequiredService<IKeyBox>().GetKeyRing(GetTarget(definitionByKey.PropertiesPath!))?[definitionByKey.KeyFieldName!];
@@ -29,15 +25,11 @@ internal class KeyRing : IKeyRing
             {
                 return GetValue(definitionByProperty.PropertiesPath!);
             }
-            return null;
+            return _primaryKey[_keyDefinition[name].Index];
         }
         set 
         {
-            if (_keyDefinition[name] is KeyDefinitionByType definitionByType)
-            {
-                _primaryKey[_keyDefinition[name].Index] = Convert.ChangeType(value, definitionByType.Type);
-            } 
-            else if(_keyDefinition[name] is KeyDefinitionByKey definitionByKey)
+            if(_keyDefinition[name] is KeyDefinitionByKey definitionByKey)
             {
                 if (_serviceProvider.GetRequiredService<IKeyBox>().GetKeyRing(GetTarget(definitionByKey.PropertiesPath!)) is IKeyRing keyRing)
                 {
@@ -47,6 +39,10 @@ internal class KeyRing : IKeyRing
             else if (_keyDefinition[name] is KeyDefinitionByProperty definitionByProperty)
             {
                 SetValue(definitionByProperty.PropertiesPath!, value);
+            }
+            else
+            {
+                _primaryKey[_keyDefinition[name].Index] = value;
             }
         }
     }
@@ -93,6 +89,11 @@ internal class KeyRing : IKeyRing
     {
         this[name] = value;
         return this;
+    }
+
+    public Type GetPartType(int index)
+    {
+        return _keyDefinition[_keyNames[index]].Type!;
     }
 
     private object? GetValue(PropertyInfo[] path)
@@ -148,5 +149,4 @@ internal class KeyRing : IKeyRing
         }
         return target;
     }
-
 }

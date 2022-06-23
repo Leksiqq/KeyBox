@@ -3,6 +3,8 @@
 public interface IKeyRing
 {
     object? this[string name] { get; set; }
+    object? this[int index] { get; set; }
+    Type GetPartType(int index);
     IEnumerable<string> Keys { get; }
     IEnumerable<object?> Values { get; }
     IEnumerable<KeyValuePair<string, object?>> Entries { get; }

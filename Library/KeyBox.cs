@@ -30,7 +30,7 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
     }
 
 
-    bool IKeyBox.HasMappedPrimaryKeys(Type type)
+    bool IKeyBox.HasMappedKeys(Type type)
     {
         return _primaryKeysMap.ContainsKey(type) 
             || type.IsInterface && _primaryKeysMap.Keys.Where(t => type.IsAssignableFrom(t)).FirstOrDefault() is Type;
@@ -70,7 +70,7 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
         {
             if (definition[name] is Type type)
             {
-                definitions[name] = new KeyDefinitionByType { Type = type };
+                definitions[name] = new KeyDefinition { Type = type };
             }
             else if (definition[name] is string path)
             {
@@ -113,7 +113,7 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
                 }
                 if(!definitions.ContainsKey(name))
                 {
-                    definitions[name] = new KeyDefinitionByProperty { PropertiesPath = propertyInfos.ToArray() };
+                    definitions[name] = new KeyDefinitionByProperty { PropertiesPath = propertyInfos.ToArray(), Type = current };
                 }
                 (definitions[name] as KeyDefinitionByProperty).PropertiesPath = propertyInfos.ToArray();
             }
@@ -148,6 +148,7 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
 
     private void CheckPaths(List<Exception> exceptions)
     {
+        Stack<KeyDefinition> stack = new();
         List<Type> toRemove = new();
         foreach (KeyValuePair<Type, Dictionary<string, KeyDefinition>> definitions in _primaryKeysMap)
         {
@@ -156,14 +157,32 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
                 if (definition.Value is KeyDefinitionByKey definitionByKey)
                 {
                     if (
-                        !_primaryKeysMap.ContainsKey(definitionByKey.PropertiesPath.Last().PropertyType) 
-                        || !_primaryKeysMap[definitionByKey.PropertiesPath.Last().PropertyType].ContainsKey(definitionByKey.KeyFieldName!)
+                        !_primaryKeysMap.ContainsKey(definitionByKey.PropertiesPath!.Last().PropertyType) 
+                        || !_primaryKeysMap[definitionByKey.PropertiesPath!.Last().PropertyType].ContainsKey(definitionByKey.KeyFieldName!)
                     )
                     {
                         toRemove.Add(definitions.Key);
                         exceptions.Add(new ArgumentException($"The {nameof(definitionByKey.PropertiesPath)} at {nameof(IKeyBoxConfiguration.AddPrimaryKey)} "
                         + $"for type {definitions.Key} and name {definition.Key} is invalid as primary key field {definitionByKey.KeyFieldName} "
-                        + $"is not defined for {definitionByKey.PropertiesPath.Last().PropertyType}"));
+                        + $"is not defined for {definitionByKey.PropertiesPath!.Last().PropertyType}"));
+                    }
+                    else if(definitionByKey.Type is null)
+                    {
+                        KeyDefinition current = definitionByKey;
+                        do
+                        {
+                            stack.Push(current);
+                            if(current is not KeyDefinitionByKey)
+                            {
+                                break;
+                            }
+                            current = _primaryKeysMap[(current as KeyDefinitionByKey)!.PropertiesPath!.Last().PropertyType][(current as KeyDefinitionByKey)!.KeyFieldName!];
+                        }
+                        while (current.Type is null);
+                        while(stack.Count > 0)
+                        {
+                            stack.Pop().Type = current.Type;
+                        }
                     }
                 }
             }
