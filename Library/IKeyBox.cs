@@ -4,4 +4,5 @@ public interface IKeyBox
 {
     IKeyRing? GetKeyRing(object source);
     bool HasMappedPrimaryKeys(Type type);
+    bool HasMappedPrimaryKeys<T>();
 }

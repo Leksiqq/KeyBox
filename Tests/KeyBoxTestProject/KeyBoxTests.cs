@@ -136,6 +136,17 @@ public class KeyBoxTests
         Assert.That(keyRing.IsCompleted, Is.True);
         CollectionAssert.AreEqual(keyRing.Values, new object[] { 42, "RULED" });
 
+        Assert.That(keyBox.HasMappedPrimaryKeys<IPoco1_1>(), Is.True);
+        Assert.That(keyBox.HasMappedPrimaryKeys<IPoco1_2>(), Is.True);
+        Assert.That(keyBox.HasMappedPrimaryKeys<IPoco1_3>(), Is.True);
+
+        Assert.That(keyBox.HasMappedPrimaryKeys<IPoco2_1>(), Is.True);
+        Assert.That(keyBox.HasMappedPrimaryKeys<IPoco2_2>(), Is.True);
+        Assert.That(keyBox.HasMappedPrimaryKeys<IPoco2_3>(), Is.True);
+
+        Assert.That(keyBox.HasMappedPrimaryKeys<IPoco3_1>(), Is.False);
+        Assert.That(keyBox.HasMappedPrimaryKeys<IPoco3_2>(), Is.False);
+        Assert.That(keyBox.HasMappedPrimaryKeys<IPoco3_3>(), Is.False);
 
     }
 
