@@ -30,7 +30,7 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
     }
 
 
-    bool IKeyBox.HasMappedKeys(Type type)
+    bool IKeyBox.HasMappedPrimaryKeys(Type type)
     {
         return _primaryKeysMap.ContainsKey(type) 
             || type.IsInterface && _primaryKeysMap.Keys.Where(t => type.IsAssignableFrom(t)).FirstOrDefault() is Type;
