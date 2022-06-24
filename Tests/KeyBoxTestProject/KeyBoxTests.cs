@@ -148,6 +148,23 @@ public class KeyBoxTests
         Assert.That(keyBox.HasMappedPrimaryKeys<IPoco3_2>(), Is.False);
         Assert.That(keyBox.HasMappedPrimaryKeys<IPoco3_3>(), Is.False);
 
+        Assert.That(keyBox.GetKeyRing<IPoco3_3>(), Is.Null);
+        keyRing = keyBox.GetKeyRing<IPoco2_1>();
+        Assert.That(keyRing, Is.Not.Null);
+        keyRing.Set("ID1", 42);
+        Assert.That(keyBox.GetKeyRing(poco2_2)!["ID1"], Is.EqualTo(42));
+        Assert.That(keyRing.IsCompleted, Is.False);
+        keyRing.Set("ID2", "RULED");
+        Assert.That(keyBox.GetKeyRing(poco2_2)!["ID2"], Is.EqualTo("RULED"));
+        Assert.That(keyRing.IsCompleted, Is.True);
+        CollectionAssert.AreEqual(keyRing.Values, new object[] { 42, "RULED" });
+        Assert.That(keyRing.Source, Is.Null);
+        object obj = keyRing.InstantiateSource();
+        Assert.That(obj, Is.Not.Null);
+        Assert.That(obj, Is.EqualTo(keyRing.Source));
+
+        Trace.WriteLine(Dump(host, obj));
+
     }
 
     [Test]

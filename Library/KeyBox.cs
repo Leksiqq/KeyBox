@@ -41,6 +41,28 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
             || type.IsInterface && _primaryKeysMap.Keys.Where(t => type.IsAssignableFrom(t)).FirstOrDefault() is Type;
     }
 
+    public IKeyRing? GetKeyRing(Type type)
+    {
+        Type actualType = type;
+        if(!_primaryKeysMap.ContainsKey(actualType))
+        {
+            if(type.IsInterface && _primaryKeysMap.Keys.Where(t => type.IsAssignableFrom(t)).FirstOrDefault() is Type type1)
+            {
+                actualType = type1;
+            }
+            else
+            {
+                return null;
+            }
+        }
+        return new KeyRing(_serviceProvider, this, actualType, _primaryKeysMap[actualType], null);
+    }
+
+    IKeyRing? IKeyBox.GetKeyRing<T>() where T : class
+    {
+        return GetKeyRing(typeof(T));
+    }
+
     IKeyRing? IKeyBox.GetKeyRing(object? source)
     {
         if (source is null)
@@ -57,7 +79,7 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
             Type? type = source.GetType();
             if (_primaryKeysMap.ContainsKey(type))
             {
-                keyRing = new KeyRing(_serviceProvider, _primaryKeysMap[type], source);
+                keyRing = new KeyRing(_serviceProvider, this, source.GetType(), _primaryKeysMap[type], source);
                 _attachedKeys.Add(source, keyRing);
             }
             return keyRing;
@@ -131,6 +153,11 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
         }
         _primaryKeysMap[targetType] = definitions;
         return this;
+    }
+
+    internal void AttachKeyRing(object source, KeyRing keyRing)
+    {
+        _attachedKeys.Add(source, keyRing);
     }
 
     private void Commit(IServiceCollection services)

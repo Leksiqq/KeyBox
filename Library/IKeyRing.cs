@@ -12,4 +12,5 @@ public interface IKeyRing
     int Count { get; }
     object Source { get; }
     IKeyRing Set(string name, object value);
+    object InstantiateSource();
 }
