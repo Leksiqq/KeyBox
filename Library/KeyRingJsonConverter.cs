@@ -62,7 +62,7 @@ internal class KeyRingJsonConverter<T> : JsonConverter<T> where T : class
                         }
                     }
                 }
-                else if(propertyName == KeyRingJsonConverterFactory.KeyPropertyName && reader.GetBoolean())
+                else if(propertyName == KeyRingJsonConverterFactory.KeyOnlyPropertyName && reader.GetBoolean())
                 {
                     keyOnly = true;
                 }
@@ -112,10 +112,15 @@ internal class KeyRingJsonConverter<T> : JsonConverter<T> where T : class
         {
             PrimaryKeyEventArgs? primaryKeyEventArgs = null;
             writer.WriteStartObject();
-            IKeyRing? keyRing = _serviceProvider.GetRequiredService<IKeyBox>().GetKeyRing(value);
+            IKeyBox keyBox = _serviceProvider.GetRequiredService<IKeyBox>();
+            IKeyRing? keyRing = keyBox.GetKeyRing(value);
             if(keyRing is { })
             {
                 writer.WritePropertyName(KeyRingJsonConverterFactory.KeyPropertyName);
+                writer.WriteStartObject();
+                writer.WritePropertyName(KeyRingJsonConverterFactory.TypeName);
+                writer.WriteNumberValue((keyBox as KeyBox)!.GetTypeId(typeof(T)));
+                writer.WritePropertyName(KeyRingJsonConverterFactory.KeyFieldsName);
                 writer.WriteStartArray();
                 foreach (var item in keyRing.Values)
                 {
@@ -131,13 +136,14 @@ internal class KeyRingJsonConverter<T> : JsonConverter<T> where T : class
                     TypeToConvert = typeof(T)
                 };
                 _factory.OnPrimaryKeyFound(primaryKeyEventArgs);
+                if (primaryKeyEventArgs is { } && primaryKeyEventArgs.Interrupt)
+                {
+                    writer.WritePropertyName(KeyRingJsonConverterFactory.KeyOnlyPropertyName);
+                    writer.WriteBooleanValue(true);
+                }
+                writer.WriteEndObject();
             }
-            if (primaryKeyEventArgs is {} && primaryKeyEventArgs.Interrupt)
-            {
-                writer.WritePropertyName(KeyRingJsonConverterFactory.KeyOnlyPropertyName);
-                writer.WriteBooleanValue(true);
-            }
-            else
+            if(primaryKeyEventArgs is null || !primaryKeyEventArgs.Interrupt)
             {
                 foreach (PropertyInfo pi in typeof(T).GetProperties())
                 {

@@ -8,13 +8,14 @@ internal class KeyRing : IKeyRing
     private readonly IServiceProvider _serviceProvider;
     private readonly Dictionary<string, KeyDefinition> _keyDefinition;
     private readonly string[] _keyNames;
-    private readonly Type _sourceType;
     private readonly KeyBox _keyBox;
     private readonly object _lock = new();
     private object? _source = null;
 
     private readonly object?[] _primaryKey;
-    
+
+    internal Type SourceType { get; private set; }
+
     public object? Source { 
         get 
         { 
@@ -57,7 +58,7 @@ internal class KeyRing : IKeyRing
             }
             else
             {
-                _primaryKey[_keyDefinition[name].Index] = value;
+                _primaryKey[_keyDefinition[name].Index] = Convert.ChangeType(value, _keyDefinition[name].Type!);
             }
         }
     }
@@ -93,7 +94,7 @@ internal class KeyRing : IKeyRing
 
     internal KeyRing(IServiceProvider serviceProvider, KeyBox keyBox, Type type, Dictionary<string, KeyDefinition> keyDefinition, object? source)
     {
-        _sourceType = type;
+        SourceType = type;
         _source = source;
         _serviceProvider = serviceProvider;
         _keyDefinition = keyDefinition;
@@ -136,7 +137,7 @@ internal class KeyRing : IKeyRing
             {
                 if (_source is null)
                 {
-                    _source = _serviceProvider.GetRequiredService(_sourceType);
+                    _source = _serviceProvider.GetRequiredService(SourceType);
                     foreach (string name in Keys)
                     {
                         if (_keyDefinition[name] is KeyDefinitionByKey || _keyDefinition[name] is KeyDefinitionByProperty)

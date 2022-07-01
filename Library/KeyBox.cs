@@ -3,6 +3,7 @@ using Microsoft.Extensions.Hosting;
 using System.Collections.Concurrent;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 
 namespace Net.Leksi.KeyBox;
 
@@ -11,6 +12,9 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
     private const string _nullableAttributeName = "NullableAttribute";
 
     private readonly Dictionary<Type, Dictionary<string, KeyDefinition>> _primaryKeysMap = new();
+    private readonly Dictionary<Type, int> _typesMap = new();
+    private readonly Dictionary<Type, Type?> _typesToActualMap = new();
+    private readonly List<Type> _types = new();
     private readonly ConditionalWeakTable<object, KeyRing> _attachedKeys = new();
     private bool _isConfigured = false;
     private IServiceProvider _serviceProvider = null!;
@@ -29,7 +33,6 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
         });
     }
 
-
     bool IKeyBox.HasMappedPrimaryKeys<T>()
     {
         return ((IKeyBox)this).HasMappedPrimaryKeys(typeof(T));
@@ -43,19 +46,23 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
 
     public IKeyRing? GetKeyRing(Type type)
     {
-        Type actualType = type;
-        if(!_primaryKeysMap.ContainsKey(actualType))
+        Type? actualType = GetActualType(type);
+        if(actualType is { })
         {
-            if(type.IsInterface && _primaryKeysMap.Keys.Where(t => type.IsAssignableFrom(t)).FirstOrDefault() is Type type1)
+            if (!_primaryKeysMap.ContainsKey(actualType))
             {
-                actualType = type1;
+                if (type.IsInterface && _primaryKeysMap.Keys.Where(t => type.IsAssignableFrom(t)).FirstOrDefault() is Type type1)
+                {
+                    actualType = type1;
+                }
+                else
+                {
+                    return null;
+                }
             }
-            else
-            {
-                return null;
-            }
+            return new KeyRing(_serviceProvider, this, actualType, _primaryKeysMap[actualType], null);
         }
-        return new KeyRing(_serviceProvider, this, actualType, _primaryKeysMap[actualType], null);
+        return null;
     }
 
     IKeyRing? IKeyBox.GetKeyRing<T>() where T : class
@@ -142,7 +149,7 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
                 {
                     definitions[name] = new KeyDefinitionByProperty { PropertiesPath = propertyInfos.ToArray(), Type = current };
                 }
-                (definitions[name] as KeyDefinitionByProperty).PropertiesPath = propertyInfos.ToArray();
+                (definitions[name] as KeyDefinitionByProperty)!.PropertiesPath = propertyInfos.ToArray();
             }
             else
             {
@@ -152,12 +159,54 @@ internal class KeyBox : IKeyBox, IKeyBoxConfiguration
             ++pos;
         }
         _primaryKeysMap[targetType] = definitions;
+        _typesMap[targetType] = _types.Count;
+        _types.Add(targetType);
+
         return this;
+    }
+
+    internal int GetTypeId(Type type)
+    {
+        Type? actualType = GetActualType(type);
+        if (actualType is { })
+        {
+            return _typesMap[actualType];
+        }
+        return -1;
+    }
+
+    internal Type? GetTypeById(int id)
+    {
+        return id >= 0 && _types.Count > id ? _types[id] : null;
     }
 
     internal void AttachKeyRing(object source, KeyRing keyRing)
     {
         _attachedKeys.Add(source, keyRing);
+    }
+
+    internal Type? GetActualType(Type type)
+    {
+        lock(type)
+        {
+            if (!_typesToActualMap.TryGetValue(type, out Type? actualType))
+            {
+                actualType = type;
+                if (!_primaryKeysMap.ContainsKey(actualType))
+                {
+                    if (type.IsInterface && _primaryKeysMap.Keys.Where(t => type.IsAssignableFrom(t)).FirstOrDefault() is Type type1)
+                    {
+                        actualType = type1;
+                    }
+                    else
+                    {
+                        actualType = null;
+                    }
+                }
+                _typesToActualMap[type] = actualType;
+            }
+            return actualType;
+        }
     }
 
     private void Commit(IServiceCollection services)

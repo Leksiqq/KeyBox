@@ -10,7 +10,7 @@ public interface IKeyRing
     IEnumerable<KeyValuePair<string, object?>> Entries { get; }
     bool IsCompleted { get; }
     int Count { get; }
-    object Source { get; }
+    object? Source { get; }
     IKeyRing Set(string name, object value);
     object InstantiateSource();
 }

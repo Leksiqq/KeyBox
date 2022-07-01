@@ -23,6 +23,8 @@ public class KeyRingJsonConverterFactory : JsonConverterFactory
     }
 
     public const string KeyPropertyName = "$key";
+    public const string KeyFieldsName = "$";
+    public const string TypeName = "$type";
     public const string KeyOnlyPropertyName = "$keyOnly";
 
     private PrimaryKeyEventHandler? _primaryKeyEventHandler = null;
